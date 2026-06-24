@@ -144,11 +144,25 @@ class ComplianceViolationKind(StrEnum):
 
 
 class FundingRequest(FrozenModel):
-    """One period's Investment Request, with the period's actual S&M spend (KB §4)."""
+    """One period's Investment Request (KB §4): ``F(d,n) = funding_pct x expected_sm_spend``.
+
+    The IR states an Expected S&M Spend; the company-elected funding rate for the period is
+    implicit in ``requested_funding / expected_spend`` and may vary period to period within the
+    negotiated band (KB §3.2). ``actual_spend`` is the realised spend, used for the
+    deemed-minimum floor and as the prior-period base of the growth obligation.
+    ``expected_sm_spend`` defaults to ``actual_spend`` for the matched-expectation case (e.g. the
+    executed SK011 vintages, where expected = actual).
+    """
 
     period_month: date
     requested_funding: Money  # F(d,n) the company requests
     actual_spend: Money  # Actual S&M Spend for the period
+    expected_sm_spend: Money | None = None  # IR's Expected S&M Spend; None => matches actual
+
+    @property
+    def expected_spend(self) -> Money:
+        """Expected S&M Spend driving ``F`` (KB §4); falls back to actual when unstated."""
+        return self.expected_sm_spend if self.expected_sm_spend is not None else self.actual_spend
 
 
 class ComplianceViolation(FrozenModel):
