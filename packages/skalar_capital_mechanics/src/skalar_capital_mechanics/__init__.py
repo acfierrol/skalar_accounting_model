@@ -6,6 +6,18 @@ Depends only on ``skalar_data_access``.
 
 from __future__ import annotations
 
+from .cash_events import (
+    DEFAULT_LEVERAGE,
+    CashEvent,
+    GCDates,
+    NettingInstruction,
+    TransactedLedgerRow,
+    build_downstream_cash_events,
+    build_netting,
+    build_transacted_ledger,
+    derive_debt_taken,
+    sharing_events_from_schedule,
+)
 from .collections import (
     CohortIndex,
     CollectionsCell,
@@ -68,7 +80,9 @@ from .resolve import load_company, resolve_deal_parameters
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_LEVERAGE",
     "CapitalMechanicsError",
+    "CashEvent",
     "CashEventKind",
     "CohortIndex",
     "CollectionsCell",
@@ -84,12 +98,14 @@ __all__ = [
     "FlatMultiplePricing",
     "FundingBand",
     "FundingRequest",
+    "GCDates",
     "IncrementalMechanic",
     "LeverageStructure",
     "LinearLadderMechanic",
     "MoicLadder",
     "MoicLadderPricing",
     "Money",
+    "NettingInstruction",
     "Pct",
     "PerPeriodCap",
     "PricingStrategyKind",
@@ -108,11 +124,16 @@ __all__ = [
     "ThresholdResult",
     "ThresholdSpec",
     "ThresholdTiming",
+    "TransactedLedgerRow",
     "WindDownAssessment",
     "WindDownSpec",
     "build_collections",
+    "build_downstream_cash_events",
+    "build_netting",
+    "build_transacted_ledger",
     "check_compliance",
     "cohort_index",
+    "derive_debt_taken",
     "evaluate_threshold",
     "load_company",
     "load_defaults",
@@ -121,6 +142,7 @@ __all__ = [
     "reference_income",
     "resolve_deal_parameters",
     "return_cap",
+    "sharing_events_from_schedule",
     "sharing_schedule",
     "winddown_payment",
 ]

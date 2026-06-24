@@ -87,6 +87,8 @@ module = [
     "sqlparse.*",
     "pyarrow",
     "pyarrow.*",
+    "openpyxl",
+    "openpyxl.*",
 ]
 ignore_missing_imports = true
 follow_imports = "skip"
