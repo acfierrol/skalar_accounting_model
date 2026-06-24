@@ -1,0 +1,4 @@
+{#- Deal id -> name. Value bound: @company_id. -#}
+SELECT company_id, company_name
+FROM `{{ project }}.{{ dataset }}.company`
+WHERE company_id = @company_id

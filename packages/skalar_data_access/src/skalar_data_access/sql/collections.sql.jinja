@@ -1,0 +1,41 @@
+{#-
+  collections(company_id, cohort_month, payment_month) for one deal.
+
+  Collections rule (KB §2): Collections = Success - Refunds = SUM(usd_amount),
+  since refunds are negative amounts and NULL amounts are dropped by SUM.
+
+  `payments` has no `payment_month` column -> derive DATE_TRUNC(payment_date, MONTH).
+
+  exclude_backdated: when true, drop customers whose FIRST payment month (computed
+  over the *unfiltered* per-customer history, KB §2) precedes @closing_month — the
+  "first_period < 0" / pre-closing exclusion. The firsts CTE intentionally does NOT
+  apply the @date_from/@date_to window, so the date filter cannot leak a pre-deal
+  customer in as new.
+
+  Values are bound parameters: @company_id, @date_from, @date_to, @closing_month.
+-#}
+{% if exclude_backdated -%}
+WITH firsts AS (
+    SELECT customer_id, DATE_TRUNC(MIN(payment_date), MONTH) AS first_period_month
+    FROM `{{ project }}.{{ dataset }}.payments`
+    WHERE company_id = @company_id
+    GROUP BY customer_id
+),
+eligible AS (
+    SELECT customer_id FROM firsts WHERE first_period_month >= @closing_month
+)
+{% endif -%}
+SELECT
+    p.company_id,
+    p.cohort_month,
+    DATE_TRUNC(p.payment_date, MONTH) AS payment_month,
+    SUM(p.usd_amount) AS collections
+FROM `{{ project }}.{{ dataset }}.payments` AS p
+{% if exclude_backdated -%}
+JOIN eligible AS e USING (customer_id)
+{% endif -%}
+WHERE p.company_id = @company_id
+  AND p.payment_date >= @date_from
+  AND p.payment_date < @date_to
+GROUP BY p.company_id, p.cohort_month, payment_month
+ORDER BY p.cohort_month, payment_month

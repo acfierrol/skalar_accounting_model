@@ -1,0 +1,712 @@
+\documentclass[11pt, a4paper]{article}
+
+% ------------------------------------------------------------
+% Layout
+% ------------------------------------------------------------
+\usepackage[top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsmath, amssymb, amsfonts, amsthm}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=MidnightBlue, urlcolor=MidnightBlue, citecolor=MidnightBlue}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textcolor{gray}{Skalar Inc. --- Confidential}}
+\fancyhead[R]{\small\textcolor{gray}{Capital Mechanics}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\usepackage{titlesec}
+\titleformat{\section}{\Large\bfseries}{\thesection.}{0.5em}{}[\titlerule]
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.5em}{}
+\usepackage{setspace}
+\setstretch{1.15}
+\usepackage{parskip}
+
+% ------------------------------------------------------------
+% Definition machinery
+% ------------------------------------------------------------
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{mechanic}{Mechanic}
+\newtheorem{invariant}{Invariant}
+\newtheorem{policy}{Policy}
+
+% Source citation tag --- suppressed: the document is self-contained.
+% Provenance is preserved in the source for maintainers but not rendered.
+\newcommand{\src}[1]{}
+
+% Generic counterparty/document phrases (no specific instruments named in output)
+\newcommand{\GCCIA}{upstream facility}
+\newcommand{\KCIA}{downstream agreement}
+\newcommand{\FudoTS}{downstream term sheet}
+\newcommand{\DT}{downstream template}
+
+% ------------------------------------------------------------
+% Notation macros (one symbol, one meaning, used everywhere)
+% ------------------------------------------------------------
+\newcommand{\PFA}{\mathrm{PFA}}                   % upstream Periodic Funding Amount
+\newcommand{\RIup}{\mathrm{RI}^{\uparrow}}        % upstream Reference Income (entitlement)
+\newcommand{\rem}{\mathrm{rem}}                   % remittance Skalar -> GC
+\newcommand{\Kgc}{K_{gc}}                         % upstream cap
+\newcommand{\Xirr}{X_{16}}                        % XIRR leg of the upstream cap
+\newcommand{\pool}{\mathrm{pool}}                 % Skalar fungible cash pool
+\newcommand{\spend}{\mathrm{spend}}               % actual S&M spend
+\newcommand{\espend}{\widehat{\mathrm{spend}}}    % expected S&M spend
+\newcommand{\col}{\mathrm{col}}                   % collections
+\newcommand{\Stil}{\tilde{S}}                     % sharing actually collected (capped)
+\newcommand{\capdn}{K_{dn}}                       % downstream return cap
+\newcommand{\OO}{\Omega}                          % set of open deal cohorts
+\newcommand{\cum}{\mathrm{cum}}
+\newcommand{\inc}{\mathrm{inc}}
+\newcommand{\param}[1]{\texttt{#1}}
+
+\begin{document}
+
+% ------------------------------------------------------------
+\begin{titlepage}
+    \centering
+    \vspace*{3cm}
+    {\Huge\bfseries SKALAR\par}
+    \vspace{0.5cm}
+    {\LARGE Capital Mechanics\par}
+    \vspace{0.3cm}
+    {\LARGE Upstream Obligations \& Downstream Receivables\par}
+    \vspace{2cm}
+    {\large Internal reference --- Confidential\par}
+    \vspace{0.5cm}
+    {\large June 2026 --- v4.0\par}
+    \vfill
+    {\small Skalar Inc.\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Purpose}\label{sec:guide}
+% ============================================================
+
+This document is the reference specification for Skalar's \textbf{administrative infrastructure}: the system that manages, in both directions, the payment obligations created by Skalar's business --- the obligations Skalar owes its senior funding partner, General Catalyst (GC), and the obligations Skalar's portfolio companies owe Skalar. It defines every object, parameter, cash event, and invariant that the platform must represent, compute, and enforce.
+
+The structure of the business is two funding layers of the same instrument. \emph{Upstream}, GC funds Skalar against the income of monthly customer \textbf{vintages}; this layer is singular and its parameters are facts of the standing facility. \emph{Downstream}, Skalar funds portfolio companies under one agreement per company, instantiated from a common template; this layer is a family, and its parameters are negotiated per deal.
+
+Each mechanic family carries a \emph{default strategy} and electable alternatives: deals start from the defaults, and negotiation resolves the specifics. This specification is deliberately free of live-deal values --- concrete, dated cases live in a separate scenarios sandbox used for testing. Appendix~\ref{sec:xval} maps vocabulary to standard agreement terminology; Appendix~\ref{sec:fx} holds the foreign-exchange strategy for non-USD deals.
+
+The document is organized as a \textbf{parametrized cash-event engine}. Every cash event --- funding, sharing, remittance, adjustment, wind-down --- is one execution of a common template whose behaviour is fixed by a vector of resolved parameters. A fully general \emph{default configuration} is defined for each mechanic; a deal or vintage that negotiates nothing runs on the defaults, and each negotiated dimension is absorbed as a parameter \emph{value}, not a new mechanism. Because the deals are heavily negotiated the parameter space is wide and the administrative load --- tracking every election against its default, per cohort and per vintage --- is correspondingly high; carrying that load is precisely what the platform exists to do. The recurring point of entry is the \emph{Investment Request}: once per period the funded party states the period's expected spend and elects the period's percentages, and countersignature resolves them onto the cohort or vintage that request creates.
+
+\subsection{Controlled vocabulary}
+
+The following words are used with one meaning only.
+
+\begin{longtable}{@{} L{3.2cm} L{11.6cm} @{}}
+\toprule
+\textbf{Word} & \textbf{Reserved meaning} \\
+\midrule
+\endhead
+upstream & The Skalar--GC relationship. Skalar owes upstream. \\[3pt]
+downstream & The Skalar--portfolio relationship. Skalar is owed downstream. \\[3pt]
+company & A downstream portfolio company (\GCCIA{} term: \emph{Underlying Investment Recipient}). \\[3pt]
+deal & One executed downstream CIA with one company. \\[3pt]
+deal cohort & A downstream Reference Cohort (Definition~\ref{def:dealcohort}). \\[3pt]
+vintage & An upstream Reference Cohort (Definition~\ref{def:vintage}). \\[3pt]
+funding & Capital advanced against future income (never ``loan''; Investment Amounts are investments in receivables, treated as debt only for tax and accounting). \\[3pt]
+entitlement & Income contractually due to Skalar, whether or not collected. \\[3pt]
+remittance & A payment from Skalar to GC on account of a vintage. \\[3pt]
+settlement & The dated net wire that discharges the period's components. \\[3pt]
+election & A per-deal or per-vintage choice among formalized alternatives. \\[3pt]
+resolution & The act of fixing a parameter's value at countersignature. \\[3pt]
+instance & The resolved parameter set of one downstream deal (held in the scenarios sandbox, not in this specification). \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Notation}\label{sec:notation}
+% ============================================================
+
+One symbol, one meaning. All amounts are USD. Time conventions: $t$ ranges over calendar months; $\tau$ identifies a vintage by its calendar month; $m$ is a vintage's age in months.
+
+\begin{longtable}{@{} L{3.0cm} L{3.4cm} L{8.4cm} @{}}
+\toprule
+\textbf{Symbol} & \textbf{Type} & \textbf{Meaning} \\
+\midrule
+\endhead
+$t$ & calendar month & Global timeline index. \\[3pt]
+$\tau$ & calendar month & A vintage, identified by its month (Definition~\ref{def:vintage}). \\[3pt]
+$m \in \{0, 1, \dots\}$ & months & Age of a vintage: months elapsed since $\tau$. \\[3pt]
+$d$ & deal & One downstream CIA. $D$ = set of active deals, $|D| \leq 100$. \\[3pt]
+$n, i, k$ & period indices & Downstream S\&M Period indices of a deal: $n$ generic, $i$ a cohort's birth period, $k$ a measurement period. Age $= k - i$. \\[3pt]
+$P(d, n)$ & period & The $n$-th S\&M Period of deal $d$. \\[3pt]
+$C(d, i)$ & set & Deal cohort born in $P(d, i)$ (Definition~\ref{def:dealcohort}). \\[3pt]
+$V(\tau)$ & set & Vintage $\tau$ (Definition~\ref{def:vintage}). \\[3pt]
+$\espend(d, n)$, $\spend(d, n)$ & USD & Expected / actual S\&M spend of the company in $P(d,n)$. \\[3pt]
+$F(d, n)$ & USD & Downstream Investment Amount for $P(d, n)$ (Definition~\ref{def:fdown}). \\[3pt]
+$f(d, n)$ & ratio & Funding rate of $P(d,n)$, resolved from the negotiated interval $[f_{\min}(d), f_{\max}(d)]$; a fixed rate is the degenerate interval. Exactly one funding rate per cohort (Definition~\ref{def:fdown}). \\[3pt]
+$\underline{f}(d)$ & ratio & Deemed-minimum funding rate: a floor on the realized funding rate of $d$ (Definition~\ref{def:deemedmin}). Default: the negotiated funding rate. \\[3pt]
+$e_0(d, i)$, $\kappa(d)$, $e(t)$ & FX rates & Cohort inception rate, rate-cap multiplier, and spot rate for non-USD deals (Appendix~\ref{sec:fx}). Default: all collections in USD. \\[3pt]
+$A(d, n)$ & USD & Funding adjustment for $P(d,n)$; $A > 0$ refund to Skalar, $A < 0$ top-up to the company (Definition~\ref{def:fa}). \\[3pt]
+$F_{\mathrm{eff}}(d, n)$ & USD & $F(d, n) - A(d, n)$. \\[3pt]
+$\col(d, k, i)$ & USD & Collections in $P(d,k)$ from customers of $C(d, i)$; may be negative (refunds). \\[3pt]
+$R(d, k, i)$ & USD & Downstream Reference Income $= \col(d,k,i) \times g(d,i)$ (Definition~\ref{def:ridown}). \\[3pt]
+$g(d, i)$ & ratio & Margin of cohort $C(d,i)$, resolved at the cohort's IR; may differ between cohorts. Default: fixed for the cohort's life; a within-life schedule is an electable strategy (Definition~\ref{def:ridown}). \\[3pt]
+$s(d, i)$ & ratio & Sharing rate of cohort $C(d,i)$, resolved from its own negotiated interval $[s_{\min}(d), s_{\max}(d)]$ in the same manner as $f$; independent of $f$ (a deal may set $s = f$, but need not). \\[3pt]
+$\Stil(d, k, i)$ & USD & Sharing actually collected, truncated at $\capdn$ (Definition~\ref{def:capdn}). \\[3pt]
+$\mu(d, i)$ & multiple & Return Multiple (MOIC) of cohort $C(d,i)$ under the deal's return-pricing strategy (Definition~\ref{def:capdn}). \\[3pt]
+$\capdn(d, i)$ & USD & Downstream return cap $= \mu(d,i) \times F_{\mathrm{eff}}(d,i)$. \\[3pt]
+$\OO(d, n)$ & set & Open deal cohorts of $d$ at $P(d,n)$: born at $i \leq n$, cap not reached. \\[3pt]
+$L_{op}(d)$ & months & Operation (S\&M) period length: whole calendar months, $L_{op} \in \{1, 3, \dots\}$ (monthly, quarterly, \dots), default $1$ (Definition~\ref{def:period}). \\[3pt]
+$L_c(d)$, $L_s(d)$ & days & Calculation and settlement period lengths (Definition~\ref{def:nettiming}). \\[3pt]
+$D(d, n)$ & date & Disbursement date of $P(d,n)$: $\mathrm{end}(P(d,n)) + L_c + L_s$ (Definition~\ref{def:nettiming}). \\[3pt]
+$\lambda(d)$ & periods & Income-due lag $= \lceil (L_c + L_s)/L_{op}\rceil$: income earned at age $k$ is due at age $k+\lambda$ (Definition~\ref{def:nettiming}). \\[3pt]
+$\delta(d)$ & periods & Settlement (netting) offset of $d$: $\delta(d) = \lambda(d) + 1$ (Definition~\ref{def:nettiming}). \\[3pt]
+$\PFA(\tau)$ & USD & Upstream Periodic Funding Amount of vintage $\tau$ (Definition~\ref{def:pfa}). \\[3pt]
+$\varphi(\tau)$ & ratio & Investor Funding Percentage of $\tau$; ceiling $0.95$ (Definition~\ref{def:pfa}). \\[3pt]
+$\sigma(\tau)$ & ratio & Investor Sharing Percentage of $\tau$; $\sigma(\tau) = \varphi(\tau)$, breach $\Rightarrow 1.00$ (Definition~\ref{def:remit}). \\[3pt]
+$\RIup(\tau, m)$ & USD & Upstream Reference Income: Skalar's entitlement attributed to $V(\tau)$ falling due in month $\tau + m$ (Definition~\ref{def:riup}). \\[3pt]
+$\Kgc(\tau, m)$ & USD & Upstream cap of $\tau$ at age $m$ (Definition~\ref{def:kgc}). \\[3pt]
+$\Xirr(\tau, m)$ & USD & XIRR leg of $\Kgc$ (Definition~\ref{def:kgc}). \\[3pt]
+$\rem(\tau, m)$ & USD & Remittance for vintage $\tau$ in month $\tau + m$ (Definition~\ref{def:remit}). \\[3pt]
+$F_{sk}(\tau)$ & USD & Skalar's own S\&M spend for vintage $\tau$: its deployments plus directly attributable spend. \\[3pt]
+$\pool(t)$ & USD & Skalar's single fungible cash balance (Definition~\ref{def:pool}). \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Objects}\label{sec:objects}
+% ============================================================
+
+\begin{definition}[Operation (S\&M) Period]\label{def:period}
+The \emph{operation period} is the contractually defined funding period during which customers are acquired and revenue accrues. Upstream: each calendar month, from the facility's effective date. Downstream: periods commence at the deal's closing and recur every $L_{op}(d)$ months. Periods are always whole calendar months, so the cadence $L_{op}(d) \in \{1, 3, \dots\}$ (monthly, quarterly, \dots) is a negotiated parameter, $L_{op} = 1$ by default.
+\src{\GCCIA{} Sch.~A (``S\&M Period''); \KCIA{} Sch.~A (``S\&M Period'').}
+\end{definition}
+
+\begin{definition}[Customer; Join Date]\label{def:customer}
+A customer is an end-user of a company's product. Its \emph{Join Date} is the date of its first transaction, computed over the complete, unfiltered transaction datasets of all payment processors (deduplicated across processors). Customers acquired before a deal's closing are excluded \emph{after} Join-Date assignment, never by pre-filtering rows.
+\src{\GCCIA{} Sch.~A (``Reference Cohort'': Join Date per Customer Dataset); \KCIA{} Sch.~A (``Reference Cohort'': first transaction date, \texttt{Customer\_Id} / \texttt{rc\_original\_app\_user\_id}).}
+\end{definition}
+
+\begin{definition}[Deal cohort]\label{def:dealcohort}
+$C(d, i)$ is the set of customers of deal $d$ whose Join Date falls within $P(d, i)$. Each customer belongs to exactly one deal cohort. Contract term: \emph{Reference Cohort} (downstream).
+\src{\KCIA{} Sch.~A (``Reference Cohort'').}
+\end{definition}
+
+\begin{definition}[Vintage]\label{def:vintage}
+$V(\tau)$ is the set of customers, across \emph{all} companies' products, whose Join Date falls within calendar month $\tau$. Contract term: \emph{Reference Cohort} (upstream). The vintage key is the customer's join month --- never Skalar's funding month and never a deal's local period index. For monthly deals, $C(d, i) \subseteq V(\tau)$ with $\tau$ the calendar month of $P(d,i)$; for longer deal periods, one deal cohort distributes over several vintages, customer by customer.
+\src{\GCCIA{} Sch.~A (``Reference Cohort'').}
+\end{definition}
+
+\begin{definition}[Vintage lifecycle]\label{def:lifecycle}
+Each vintage carries the state machine
+\[
+\textsc{requested} \to \textsc{funded} \to \textsc{accruing} \to \textsc{repaying} \to \{\textsc{closed},\ \textsc{expired}\},
+\]
+where \textsc{closed} means cumulative remittances reached $\Kgc$, and \textsc{expired} means 10 years elapsed since the last day of month $\tau$ (cap and sharing drop to zero). The flag \textsc{breached} (Definition~\ref{def:breach}) is reachable from any live state and is irreversible.
+\src{\GCCIA{} Sch.~A (``Investor Cap Amount'', 10-year proviso; ``Open Reference Cohort'').}
+\end{definition}
+
+% ============================================================
+\section{Parameter Resolution}\label{sec:params}
+% ============================================================
+
+\begin{definition}[Resolution rule]\label{def:resolution}
+Every parameter is \emph{resolved} --- fixed in value --- at the countersignature of the Investment Request that creates the object it governs, and is immutable for that object's life, except by a documented bilateral amendment (a Funding Adjustment, Definition~\ref{def:fa}). There are no global constants; the values below are the current defaults of the present regime.
+\end{definition}
+
+\begin{center}
+\begin{tabular}{@{} L{3.4cm} C{2.8cm} L{7.6cm} @{}}
+\toprule
+\textbf{Upstream, per $\tau$} & \textbf{Current default} & \textbf{Resolved at} \\
+\midrule
+$\varphi(\tau)$ & $0.95$ (ceiling) & IR countersign; revisable only by Funding Adjustment. \\[3pt]
+$\sigma(\tau)$ & $= \varphi(\tau)$ & IR countersign; breach $\Rightarrow 1.00$. \\[3pt]
+cap legs of $\Kgc$ & $2.0\times$, $16\%$ XIRR & \GCCIA{} Sch.~A; evaluated per $\tau$ on dated flows. \\[3pt]
+threshold test $T(\tau)$ & per IR & \emph{Each} upstream IR defines its own test. \\[3pt]
+windows & $14 + 3$ days & \GCCIA{} \S2.2(b), ``Scheduled Disbursement Date''. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{@{} L{3.6cm} L{4.6cm} L{5.6cm} @{}}
+\toprule
+\textbf{Downstream, per $d$ / $C(d,i)$} & \textbf{Domain} & \textbf{Resolved at} \\
+\midrule
+funding band $[f_{\min}, f_{\max}](d)$ & $0 < f_{\min} \leq f_{\max} < 1$; fixed-percentage deals have $f_{\min} = f_{\max}$ & deal signature. \\[3pt]
+$f(d, n)$ & $\in [f_{\min}(d), f_{\max}(d)]$, company-elected & start of each period. \\[3pt]
+sharing band $[s_{\min}, s_{\max}](d)$; $s(d,n)$ & resolved like the funding band, \emph{independently}; $s = f$ is an option, not a rule & deal signature; rate per cohort at its period. \\[3pt]
+$g(d,i)$; income scope & per-cohort margin; the revenue streams counted in Collections & margin at each cohort's IR; income scope at signature. \\[3pt]
+return-pricing strategy & default: MOIC ladder $(b, a_b, s, M)(d)$ --- base, base age, step/mo, ceiling; alternatives electable & deal signature; $\mu(d,i)$ freezes at payback. \\[3pt]
+threshold test $T(d)$ & checkpoint array $+$ delta leg (Section~\ref{sec:thresholds}) & deal signature, Sch.~A. \\[3pt]
+$L_{op}$; $L_c$; $L_s$ (operation, calc, settle) & $L_{op}$ whole months; $L_c, L_s$ days; $\delta = \lceil(L_c{+}L_s)/L_{op}\rceil {+} 1$ & deal signature; template target $L_c{+}L_s = 14{+}3$. \\[3pt]
+FX strategy $(e_0, \kappa)$ & optional (Appendix~\ref{sec:fx}); default: all collections USD & inception rate per cohort at IR; $\kappa$ at signature. \\[3pt]
+wind-down threshold; carve-outs & trailing-3M trigger \%; policy-enforcement exclusions & deal signature. \\[3pt]
+commitment; per-period caps & total \$; $\min$(dollar cap, growth cap) & deal signature. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Resolved values for live deals are held in the scenarios sandbox, not in this specification.
+
+\begin{policy}[Defaults and strategies]\label{pol:defaults}
+Every mechanic family carries one \emph{default strategy} and a set of electable alternatives. A deal that says nothing receives the defaults; a deal that negotiates receives its elections, recorded at resolution. New strategies may be added to a family without disturbing existing deals. The platform therefore stores, for every cohort and vintage, the full strategy election alongside the resolved numeric parameters.
+\end{policy}
+
+\begin{policy}[Relativity of parameters]\label{pol:relativity}
+A question of the form ``what is $\varphi$?'' is ill-posed; the well-posed form is ``what is $\varphi(\tau)$?''. Entitlement calculations (caps, waterfalls, thresholds) only ever reference the parameters of their own vintage or deal cohort. Cross-vintage aggregation exists in the liquidity plan only.
+\end{policy}
+
+% ============================================================
+\section{Capital Structure}\label{sec:stack}
+% ============================================================
+
+\begin{definition}[Periodic Funding Amount]\label{def:pfa}
+$\PFA(\tau)$ is the amount GC funds for vintage $\tau$, adjusted by subsequent Funding Adjustments. The \emph{Investor Funding Percentage} is $\varphi(\tau) = \PFA(\tau) / \espend_{sk}(\tau)$, contractually capped at $0.95$ absent GC consent. Like every funding election in this document, $\varphi(\tau)$ is set against \emph{expected} spend and reconciled to the realized base by Funding Adjustment (Definition~\ref{def:fa}); Skalar is the electing party upstream, as the company is downstream. GC's acceptance of any upstream IR is fully discretionary: no commitment, no maximum, funding within 3 business days of acceptance, at most one IR per period.
+\src{\GCCIA{} Sch.~A (``Periodic Funding Amount'', ``Investor Funding Percentage''); \GCCIA{} \S2.1(a)--(b).}
+\end{definition}
+
+\begin{definition}[Leverage structure]\label{def:leverage}
+Each vintage is co-funded by a \emph{senior} advance and a \emph{junior} co-investment: the senior partner (currently GC) advances the senior share at rate $\varphi(\tau)$, and Skalar's pool supplies the junior remainder $1 - \varphi(\tau)$. This senior/junior split is the \emph{leverage structure} of the funding; at the current ceiling $\varphi = 0.95$ it runs $0.95 : 0.05$, i.e.\ roughly $19{:}1$ leverage on Skalar's capital. The structure is a parameter of the present regime, not a permanent feature: $\varphi$ is the aggregate senior advance rate and may be revised, and the senior side --- a single provider today --- may in future be syndicated across several actors, in which case $\varphi(\tau)$ aggregates their advances while the junior role is unchanged. This document's first-draft treatment assumes one senior provider.
+\end{definition}
+
+\begin{definition}[Funding identity; proportion invariant]\label{def:identity}
+Each vintage is funded by exactly two sources:
+\begin{equation}
+F_{sk}(\tau) \;=\; \underbrace{\varphi(\tau)\, F_{sk}(\tau)}_{\PFA(\tau) \text{ (GC)}} \;+\; \underbrace{\bigl(1 - \varphi(\tau)\bigr) F_{sk}(\tau)}_{\text{pool draw (Skalar)}} .
+\end{equation}
+The split is the leverage structure (Definition~\ref{def:leverage}); its current ratio $0.95 : 0.05$ is an invariant of every vintage while the present regime holds. Skalar requests the ceiling on every IR (Policy~\ref{pol:leverage}); Funding Adjustments restore the proportion after each spend reconciliation, GC participating ratably. Post-adjustment, $\PFA(\tau)/\spend_{sk}(\tau) = \varphi(\tau)$ unless GC documents an election to deviate.
+\end{definition}
+
+\begin{definition}[The fungible pool]\label{def:pool}
+All Skalar-side capital is one undifferentiated balance:
+\begin{equation}
+\pool(t) = \pool(t{-}1) + \mathrm{equity}(t) + \mathrm{retained}(t) + \mathrm{adj_{in}}(t) - \mathrm{draw}(t) - \rem_{\mathrm{total}}(t) - \mathrm{opex}(t),
+\end{equation}
+where $\mathrm{retained}(t)$ is the sharing Skalar keeps (Definition~\ref{def:remit}) and $\mathrm{draw}(t)$ is the pool's $5\%$ contribution to new vintages. Dollars in the pool are indistinguishable by origin: equity and retained sharing merge irreversibly. ``Recycling'' names a flow --- sharing arrives, the pool funds the next vintage --- never a capital tranche. No formula, claim, or report may condition on a deployed dollar's origin. The only origin-tracking in the system is per-vintage GC attribution ($\PFA(\tau)$ and its dated remittances), forced by the cap mechanics.
+\end{definition}
+
+\begin{policy}[Leverage efficiency]\label{pol:leverage}
+Request $\varphi(\tau)$ at its ceiling on every IR: each Skalar-side dollar then carries 19 GC dollars. Fungibility makes the invariant serviceable --- the fixed $5\%$ co-funding is met from whatever cash the pool holds, so retained sharing redeploys at full leverage instead of idling. Fungibility preserves the efficiency of the leverage; the proportion invariant preserves its discipline. A vintage funded below ceiling consumes pool capital at degraded leverage and requires explicit justification.
+\end{policy}
+
+\begin{policy}[Solvency without GC]\label{pol:solvency}
+$\PFA(\tau)$ is a request, not a source. The liquidity plan must satisfy, for every month $t$:
+$\pool(t) \geq$ committed downstream funding$(t{+}1)$ $+$ remittances due$(t)$ $+$ opex$(t)$, evaluated at $\PFA = 0$.
+\end{policy}
+
+% ============================================================
+\section{Income: Generation and Attribution}\label{sec:income}
+% ============================================================
+
+\begin{definition}[Downstream Investment Amount; funding election]\label{def:fdown}
+$F(d, n) = f(d, n) \times \espend(d, n)$, advanced before $P(d,n)$ starts. The funding rate is negotiated as an \emph{interval}: the deal fixes $[f_{\min}, f_{\max}](d)$ and the company elects the period's rate from it at each period start; a single fixed rate is the degenerate interval $f_{\min} = f_{\max}$. The sharing rate is negotiated and resolved \emph{the same way}, from its own interval $[s_{\min}, s_{\max}](d)$, and is \emph{independent} of the funding rate: equality $s = f$ is one possible election --- the one the current deals happen to make --- not a structural identity. Resolution produces exactly one funding rate and one sharing rate per cohort, each subject to later effective-rate adjustments and breach.
+
+\emph{The rate is the company's choice, made against expected spend.} The election enters through the Investment Request, which states $\espend(d,n)$ and the period's percentage; $F(d,n)$ follows, and Skalar does not observe the realized spend until reconciliation. A company that requests funding against an inflated expected spend and then underspends is therefore \emph{observationally indistinguishable} from one that elected a lower funding rate against an accurate forecast: both leave the same $F$ standing against a smaller realized base. This indistinguishability is exactly why Funding Adjustments exist (Definition~\ref{def:fa}) --- they reconcile the elected, expectation-based funding to the realized base after the fact --- and why the election is bounded from below by a deemed minimum (Definition~\ref{def:deemedmin}). During the deal's commitment period Skalar \emph{must} fund, subject to the per-period cap ($\min$ of a dollar cap and a growth cap), the cumulative commitment cap, threshold compliance, and absence of cancellation events.
+\src{Template: \KCIA{} \S2.1, Sch.~A \S2.1(a)--(c) (fixed percentage); \FudoTS{} ``Funding Amount'' (band, company-elected per period).}
+\end{definition}
+
+\begin{definition}[Deemed minimum investment]\label{def:deemedmin}
+Because the funding rate is the company's to elect (Definition~\ref{def:fdown}), without a floor a company could shrink Skalar's sharing base simply by under-requesting while still acquiring the cohort. The deal therefore fixes a \emph{deemed minimum} $\underline{f}(d)$ on the realized funding rate: if the company's requests for $P(d,n)$ total less than $\underline{f}(d)\,\spend(d,n)$, it is \emph{deemed} to have received an Investment Amount of $\underline{f}(d)\,\spend(d,n)$, and sharing accrues on that deemed amount as though it had been funded. The floor is a resolved parameter; its default is the negotiated funding rate itself, so a company that elects the standard rate and forecasts honestly is never bound by it.
+\src{\KCIA{} Sch.~A \S2.1(c) (``Minimum Investment Amount'').}
+\end{definition}
+
+\begin{definition}[Downstream Reference Income]\label{def:ridown}
+$R(d, k, i) = \col(d, k, i) \times g(d,i)$. Collections are cash collected from the cohort's customers per the deal's named dataset columns, over the deal's \emph{income scope} --- the revenue streams the deal counts (a single product line, or all streams net of discounts), fixed at signature. Refunds enter negatively. Taxes levied on customers are excluded. Collections are denominated in USD by default; non-USD deals apply the FX strategy of Appendix~\ref{sec:fx}.
+
+\emph{Margin strategy.} Margin is resolved \emph{per cohort}, at each cohort's Investment Request, and may differ between cohorts --- the deal need not carry one margin for its whole life. The default holds a cohort's margin $g(d,i)$ fixed for that cohort's life; an electable alternative revises it within the cohort's life by a schedule $g(d, i, m)$. The election and any schedule are resolved and stored per cohort.
+\src{Template: \KCIA{} Sch.~A (``Collections'', ``Margin'', ``Reference Income''; single-product scope); \FudoTS{} ``Reference Income / Collections'' (all-streams scope, net of discounts).}
+\end{definition}
+
+\begin{definition}[Sharing; downstream cap]\label{def:capdn}
+Skalar's entitlement from cohort $C(d,i)$ in period $k$ is $S(d,k,i) = R(d,k,i) \times s(d,i)$, collected as $\Stil(d,k,i)$, truncated recursively at the cap:
+\[
+\Stil(d,k,i) = \min\Bigl( S(d,k,i),\ \max\bigl(0,\ \capdn(d,i) - {\textstyle\sum_{x<k}}\Stil(d,x,i)\bigr) \Bigr).
+\]
+The cap $\capdn(d,i) = \mu(d,i) \times F_{\mathrm{eff}}(d,i)$ is produced by the deal's \emph{return-pricing strategy}: the rule mapping a cohort's realized performance to its return multiple $\mu$. Pricing is a mechanic family with a default and electable alternatives --- how Skalar prices the return on its investment is itself a \emph{strategy}, currently a single default, not a fixed feature of the instrument.
+
+\emph{Default strategy --- payback MOIC ladder.} $\mu$ rises with the cohort's payback age $a^*$ (months) and freezes there, under the resolved parameters $(b, a_b, s, M)(d)$ --- base multiple, base age, step per month, ceiling:
+\[
+\mu(d, i) \;=\; \min\bigl(\, b(d) + s(d) \times \max(0,\ a^* - a_b(d)),\ \ M(d) \,\bigr).
+\]
+The payback age $a^*$ is measured assuming each period's sharing falls due on the last day of that period (ignoring the calc/settlement lag), rounded up to whole months. Sharing ends at the earlier of the cap and 10 years. Alternative pricing strategies --- a flat multiple, or a schedule indexed on a performance measure other than payback --- plug into the same $\capdn = \mu \times F_{\mathrm{eff}}$ slot; the resolved strategy and its parameters are stored per deal.
+\src{Template: \KCIA{} Sch.~A (``Return Multiple'', ``Return Multiple Cap'', ``Payback Period'', ``Investor Cap Amount'', ``Outstanding Investor Share''); \FudoTS{} ``Return Cap''.}
+\end{definition}
+
+\begin{definition}[Spend reconciliation; Funding Adjustment]\label{def:fa}
+Let $\Delta(d,n) = \spend(d,n) - \espend(d,n)$. Underspend ($\Delta < 0$): the company refunds $A = F \times |\Delta| / \espend > 0$; mandatory. Overspend ($\Delta > 0$): Skalar may (i) top up at the funding rate ($A = -f(d,n)\,\Delta < 0$), (ii) hold by reducing the effective funding rate to $f(d,n)\,\espend(d,n)/\spend(d,n)$, leaving $F$ unchanged against the larger base ($A = 0$), or (iii) any ratable combination. There is no separate sharing-regime taxonomy: operationally, the effective rate applied to the cohort is the one Skalar requests at reconciliation, defaulting to the negotiated rate. The platform asks for the effective percentage and, absent an election, restores the negotiated $f(d,n)$. Each adjustment is documented as a Funding Adjustment and updates the schedule of investments. GC participates ratably at $\varphi(\tau)$ in every adjustment touching vintage $\tau$, which is what restores the proportion invariant of Definition~\ref{def:identity}.
+
+\emph{Timing.} Adjustments are \textbf{not bound to the settlement calendar}: they fire at any moment, independent of the operation, calculation, and settlement periods (Definition~\ref{def:nettiming}), and are exercised \emph{as soon as the actual spend is determined} --- received or paid standalone, never queued to a disbursement date. Two reasons. First, pricing is MOIC-based --- every return cap is a multiple of $F_{\mathrm{eff}}$ --- so the effective funding of a cohort must be corrected as quickly as possible. Second, the GC share of an adjustment ($\varphi(\tau)$, currently $95\%$ of the flow) is treated upstream as a capital advance, and its position must reflect reality promptly.
+\end{definition}
+
+\begin{policy}[Diligent adjustment execution]\label{pol:adjust}
+Adjustments can be exercised early and must be exercised diligently. The platform raises an adjustment event the moment a period's actual spend is determinable, settles it standalone without waiting for the next settlement date, and propagates the GC share to the vintage's capital position at once. An adjustment already settled out-of-cycle does not re-enter any later net.
+\src{\KCIA{} \S2.1(d), Exh.~B; \GCCIA{} \S2.1(d), Exh.~B.}
+\end{policy}
+
+\begin{definition}[Upstream Reference Income --- accrual, greater-of]\label{def:riup}
+$\RIup(\tau, m)$ is Skalar's \emph{entitlement} attributed to $V(\tau)$ that becomes earned and due during month $\tau + m$:
+\begin{equation}
+\RIup(\tau, m) \;=\; \max\Bigl( \text{amount due per Customer Dataset},\ \text{amount actually collected} \Bigr),
+\end{equation}
+aggregated over the $\Stil$ flows of all deals attributable to customers of $V(\tau)$. Two consequences. \emph{Timing}: income enters the vintage ledger when it falls due downstream (income for age $k$ falls due at age $k + \lambda(d)$, Definition~\ref{def:nettiming}; e.g.\ $\approx k+2$ for a monthly Net-60 deal), not when Skalar collects. \emph{Credit risk}: downstream late payment or default does not reduce or delay the upstream obligation --- Skalar guarantees portfolio collections to GC.
+\src{\GCCIA{} Sch.~A (``Reference Income'': ``occurs as of the date on which it becomes earned and due'' and ``the greater of (x) \dots and (y) \dots'').}
+\end{definition}
+
+% ============================================================
+\section{Cash Events and Netting}\label{sec:events}
+% ============================================================
+
+\begin{definition}[Component; wire]\label{def:component}
+A \emph{component} is a typed, dated, signed entitlement or obligation. A \emph{wire} is the net of the components that a contract settles together on one date. Ledgers record components; wires are projections of the ledger. Netting never extinguishes a component.
+\end{definition}
+
+\begin{definition}[Netting principle]\label{def:netprinciple}
+Netting is one principle, applied identically upstream and downstream and stated from Skalar's perspective. On any date, for a given counterparty, take every component that falls due on that date, signed by direction (inflow to Skalar positive, outflow negative), and sum them. The \emph{net movement} is that algebraic total; its sign sets the direction --- positive is received by Skalar, negative is paid by Skalar --- and it is discharged as a single wire. Aggregation never extinguishes a component (Definition~\ref{def:component}); the wire is only the components' projection onto a date.
+
+This is how disbursements are simplified in practice. \emph{Downstream}, at each new cohort's Investment Request, Skalar nets what the company owes from prior cohorts (sharing, plus any spend adjustment then due) against what the new request draws (funding). \emph{Upstream}, Skalar nets what it owes the senior partner (remittances) against the funding advanced for the new vintage (plus adjustment shares). The closed forms below (Definitions~\ref{def:netdown}, \ref{def:netup}) are the \emph{ideal, fully-matched case}, in which all of a period's components happen to fall on a single date; they are an idealization, not a depiction of routine operation, where only the components that actually coincide are aggregated and anything settled on its own date --- notably adjustments (Policy~\ref{pol:adjust}) --- is netted separately or not at all.
+\end{definition}
+
+\begin{center}
+\begin{tabular}{@{} L{2.6cm} L{3.6cm} L{7.6cm} @{}}
+\toprule
+\textbf{Component} & \textbf{Direction} & \textbf{Content} \\
+\midrule
+\textsc{fund-down} & Skalar $\to$ company & $F(d, n)$ for a starting period. \\[3pt]
+\textsc{share-up} & company $\to$ Skalar & $\sum_{i \in \OO(d,n)} \Stil(d, n, i)$ due at a downstream settlement. \\[3pt]
+\textsc{adjust} & per sign of $A$ & Funding adjustment $A(d, n)$; settles out-of-cycle upon determination (Policy~\ref{pol:adjust}). \\[3pt]
+\textsc{pfa} & GC $\to$ Skalar & $\PFA(\tau)$ for a new vintage. \\[3pt]
+\textsc{remit} & Skalar $\to$ GC & $\rem(\tau, m)$ for each open vintage. \\[3pt]
+\textsc{fa-up} & per sign & GC's ratable share of adjustments. \\[3pt]
+\textsc{wind-down} & pass-through & Wind-down payments (Definition~\ref{def:winddown}). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{definition}[Settlement timing]\label{def:nettiming}
+Three resolved lengths fix a deal's entire cash calendar: the operation period $L_{op}(d)$ (Definition~\ref{def:period}); the \emph{calculation period} $L_c(d)$, from operation-period end until the DDR is delivered (actuals and threshold tests); and the \emph{settlement period} $L_s(d)$, from the DDR until cash moves. The single dated settlement event of $P(d,n)$ is its \emph{disbursement date}
+\[
+D(d, n) \;=\; \mathrm{end}(P(d,n)) + L_c(d) + L_s(d).
+\]
+Commercial ``Net-$N$'' terms name the receivable lag $N = L_c + L_s$ in days (Net 30, Net 60, Net 90, \dots); the cadence (monthly, quarterly, \dots) names $L_{op}$. Both are negotiated and resolved at signature; no mechanic depends on a particular $N$ or cadence. Two integers follow:
+\[
+\lambda(d) = \left\lceil \frac{L_c(d) + L_s(d)}{L_{op}(d)} \right\rceil \ \ (\text{income-due lag}),
+\qquad
+\delta(d) = \lambda(d) + 1 \ \ (\text{netting offset}).
+\]
+Income earned at age $k$ becomes due at age $k + \lambda$; the $+1$ in $\delta$ is the single period by which funding is staged ahead, so the settlement of $P(d,n)$ lands with the funding wire of $P(d, n{+}\delta)$. Monthly deals ($L_{op} = 1$ month): Net-30 ($L_c{+}L_s \approx 28$--$30$\,d) gives $\lambda = 1$, $\delta = 2$; Net-60 ($\approx 60$\,d) gives $\lambda = 2$, $\delta = 3$. A quarterly deal ($L_{op} = 3$ months) on Net-90 gives $\lambda = 1$, $\delta = 2$.
+\src{\KCIA{} \S2.2(b), ``Disbursement Date'' (one-month calc $+$ one-month settle); \FudoTS{} ``Net 30'' ($14+14$); \GCCIA{} \S2.2(b)--(c).}
+\end{definition}
+
+\begin{definition}[Downstream settlement]\label{def:netdown}
+In the ideal, fully-matched case (Definition~\ref{def:netprinciple}) --- a period's sharing, the next funding, and any then-unsettled adjustment all falling on the disbursement date $D(d,n)$ (Definition~\ref{def:nettiming}) --- the settlement of $P(d, n)$ nets to
+\begin{equation}\label{eq:netdown}
+\mathrm{Net}(d, n) \;=\; F(d, n{+}\delta) \;-\; \sum_{i \in \OO(d, n)} \Stil(d, n, i) \;-\; A(d, n),
+\end{equation}
+with sign convention: $\mathrm{Net} > 0$ Skalar pays the company, $\mathrm{Net} < 0$ the company pays Skalar, and $\delta(d) = \lambda(d) + 1$ the netting offset (e.g.\ $\delta = 2$ for monthly Net-30, $\delta = 3$ for monthly Net-60). The first $\delta$ fundings of a deal are standalone wires (no prior components to net). The $A(d,n)$ term enters the net only if the adjustment has not already settled out-of-cycle under Policy~\ref{pol:adjust}; an adjustment settled standalone is zero here. Netting against the next funding is itself a right: the next Investment Amount may be reduced by sharing owed, or the company may remit only the excess.
+\src{\KCIA{} \S2.1(c), \S2.2(a)--(b); TS ``Cash Flow Mechanics (Net 60 Payments)''.}
+\end{definition}
+
+\begin{policy}[Netting at the IR]\label{pol:netir}
+Exercise the \KCIA{} \S2.1(c) right every period: reduce the next $F(d, n)$ by the sharing owed from the prior period. This converts the $\lambda$-period receivable ($\approx$ day-60 in current instances) into a reduced day-0 outflow and pre-funds upstream remittances independently of downstream collections. Future deal templates carry $L_c + L_s = 14 + 3$ day windows to mirror upstream natively.
+\end{policy}
+
+\begin{definition}[Upstream settlement]\label{def:netup}
+In the same ideal case (Definition~\ref{def:netprinciple}), the upstream components of a month settle net in one wire:
+\begin{equation}\label{eq:netup}
+\mathrm{Net}_{gc}(t) \;=\; \PFA(\tau_{t+1}) \;-\; \sum_{\tau\ \mathrm{open}} \rem(\tau,\, t - \tau) \;\pm\; \mathrm{FA}_{gc}(t),
+\end{equation}
+with $\mathrm{Net}_{gc} > 0$ wired by GC to Skalar. The \textsc{pfa} leg is discretionary for GC; the \textsc{remit} leg is unconditional. The \textsc{fa-up} leg follows Policy~\ref{pol:adjust}: GC's ratable share of an adjustment is a capital advance on the vintage and settles upon determination, inside or outside this wire. While the portfolio grows the wire points at Skalar; the netting masks, but does not remove, the remittance obligation underneath.
+\src{\GCCIA{} \S2.1(e) (``Net Payments''), \S2.1(c).}
+\end{definition}
+
+\begin{definition}[Settlement calendar]\label{def:calendar}
+Each layer's calendar in terms of its resolved lengths (Definition~\ref{def:nettiming}); upstream values are the standing facility's:
+\begin{center}
+\begin{tabular}{@{} L{5.2cm} L{8.6cm} @{}}
+\toprule
+\textbf{Event} & \textbf{Date} \\
+\midrule
+Downstream report (DDR) & operation-period end $+\,L_c(d)$. \\[3pt]
+Downstream settlement (disbursement $D(d,n)$) & DDR $+\,L_s(d)$ $=$ operation-period end $+\,L_c + L_s$. \\[3pt]
+Upstream report (DDR) & day 14 after month end ($L_c \approx 14$\,d). \\[3pt]
+Upstream settlement & day 17 ($L_c + L_s$, $L_s \approx 3$\,d); extension at GC's discretion, at most to the last day of the following month. \\[3pt]
+Funds Flow statements & $\geq 2$ business days before each settlement. \\
+\bottomrule
+\end{tabular}
+\end{center}
+\src{\KCIA{} \S2.2(b), ``Disbursement Date''; \GCCIA{} \S2.2(b)--(c), ``Scheduled Disbursement Date''; both \S5.8(g).}
+\end{definition}
+
+% ============================================================
+\section{Upstream Repayment Dynamics}\label{sec:cap}
+% ============================================================
+
+\begin{definition}[Upstream cap]\label{def:kgc}
+GC's entitlement per vintage is capped by the lesser of two legs, evaluated on \emph{dated} cashflows at every calculation date:
+\begin{equation}\label{eq:kgc}
+\Kgc(\tau, m) \;=\; \min\Bigl(\, 2.0 \times \PFA(\tau), \;\; \Xirr(\tau, m) \,\Bigr),
+\end{equation}
+where $\Xirr(\tau, m)$ is the cumulative remittance level at which the dated flow set $\{-\PFA(\tau) \text{ at funding date}\} \cup \{+\rem \text{ at actual dates}\}$ attains $\mathrm{XIRR} = 16\%$ as of the calculation date. XIRR semantics are contractual (spreadsheet XIRR; outflows negative, inflows positive). The cap therefore \emph{accrues with time} at $16\%$/yr, meets the $2.0\times$ ceiling at $\approx 4.7$ years, and is zero from 10 years after month $\tau$.
+\src{\GCCIA{} Sch.~A (``Investor Cap Amount'', ``Internal Rate of Return'').}
+\end{definition}
+
+\begin{definition}[Remittance waterfall]\label{def:remit}
+For each open vintage, each month:
+\begin{equation}\label{eq:remit}
+\rem(\tau, m) \;=\; \min\Bigl( \sigma(\tau) \times \RIup(\tau, m), \;\; \Kgc(\tau, m) - {\textstyle\sum_{x < m}} \rem(\tau, x) \Bigr).
+\end{equation}
+In the closing month GC receives only the amount that exactly meets the binding leg; Skalar retains the remainder of that month's entitlement and $100\%$ thereafter. Before closure Skalar retains $(1 - \sigma(\tau)) \times \RIup(\tau, m)$. Over-remittance is unrecoverable; late remittance accrues default interest at $16\%$/yr (360/30 basis). The ledger records, per vintage per month, which leg of~(\ref{eq:kgc}) binds.
+\src{\GCCIA{} \S2.2(a), \S9; Sch.~A (``Investor Sharing Percentage'').}
+\end{definition}
+
+\begin{definition}[Vintage economics]\label{def:econ}
+Per vintage, Skalar's net is its total entitlement minus its total remittance, earned on the pool's co-funding draw:
+\[
+\mathrm{net}_{sk}(\tau) = \sum_m \RIup(\tau, m) - \sum_m \rem(\tau, m)
+\quad \text{on pool draw } (1 - \varphi(\tau))\, F_{sk}(\tau).
+\]
+The two caps move in opposite directions in time: the downstream cap freezes at payback (the multiple $\mu$ stops rising once the cohort pays back), while the upstream cap accrues at the facility's IRR rate until it meets its hard multiple. Skalar's margin on the upstream-funded share of a vintage is therefore a \emph{velocity spread} --- a fast cohort discharges a low frozen multiple against a small accrued entitlement and the spread is wide; as payback ages lengthen, the downstream ladder's marginal slope per month approaches the upstream monthly accrual, the two converge, and the spread on the upstream-funded share vanishes. The crossover age is a function of the deal's ladder slope and the facility's IRR; the scenarios sandbox resolves the numbers.
+\end{definition}
+
+% ============================================================
+\section{Threshold Mechanics}\label{sec:thresholds}
+% ============================================================
+
+\begin{definition}[Test basis --- not electable]\label{def:basis}
+For a tested cohort (deal cohort or vintage) with origin spend $\spend_0$:
+\[
+\cum(m) = \frac{\sum_{x \leq m} R_x}{\spend_0},
+\qquad
+\inc(m) = \frac{R_m}{\spend_0},
+\]
+where $R$ is the \emph{Reference Income the cohort is entitled to} (collections $\times$ margin) and $\spend_0$ is the origin period's \emph{Actual S\&M Spend} --- the company's full sales-and-marketing expense for that period (equivalently, Skalar's funding plus the company's own contribution: the entire spend that acquired the cohort), with expected spend as fallback while actuals are unavailable. Two bases are invalid: received sharing as numerator, and the funded amount alone as denominator. Received sharing is the cap-tracking variable (Outstanding Investor Share), never a threshold input.
+\src{\KCIA{} Sch.~A (``Threshold M0''--``M3'', ``Threshold Delta M4+'', ``Cohort Threshold Test'' proviso).}
+\end{definition}
+
+\begin{mechanic}[I --- linear ladder; default]\label{mech:one}
+A requirement schedule fixed at signature. The checkpoint grid $T(d) = \{(a_l, p_l)\}$ sets cumulative floors at specific ages; beyond the last checkpoint the schedule continues linearly with slope $p_{\Delta}$:
+\[
+\mathrm{req}(a_l) = p_l \ \ \forall (a_l, p_l) \in T,
+\qquad
+\mathrm{req}(m) = p_{\mathrm{last}} + (m - a_{\mathrm{last}})\, p_{\Delta} \ \ \text{for } m > a_{\mathrm{last}},
+\qquad \text{test: } \cum(m) \geq \mathrm{req}(m).
+\]
+The schedule is a series with negotiated initial points that grows linearly at the negotiated delta. Surplus carries forward: a weak period is not a breach while the cumulative stays on schedule, and overperformance is never penalized. The checkpoint ages, levels, and slope are deal values: grids differ in how many points they set and where (consecutive early ages, or a coarser quarterly grid, etc.); resolved grids live in the scenarios sandbox.
+\end{mechanic}
+
+\begin{mechanic}[II --- per-period incremental delta; electable alternative]\label{mech:two}
+Checkpoints plus a per-period floor on each age's own contribution:
+\[
+\cum(a_l) \geq p_l \ \ \forall (a_l, p_l) \in T, \qquad \inc(m) \geq p_{\Delta} \ \ \forall m \geq a_{\Delta}.
+\]
+Equivalent to $\cum(m) \geq \cum(m{-}1) + p_{\Delta}$ \emph{re-anchored to the actual prior cumulative each period}: no surplus credit (one period below $p_{\Delta}$ breaches regardless of accumulated overperformance), and overshoot ratchets the next requirement up. Where agreement language reads on each period's incremental income, this mechanic --- not the ladder --- is what the words say; the election recorded at signature governs, and any divergence between intended mechanic and agreement language is resolved before execution.
+\end{mechanic}
+
+\begin{definition}[Elections]\label{def:elections}
+Per deal (and per upstream IR): $\param{mechanic} \in \{$I linear ladder (default), II incremental, further strategies as negotiated$\}$; $\param{timing} \in \{$\textsc{any-day} (default): breach exists the moment a completed period's data fails; \textsc{period-end}$\}$; $\param{exit} \in \{$\textsc{breakeven} (default): the cohort leaves testing once $\cum \geq 100\%$; \textsc{return-cap}$\}$. Stringency of I vs.\ II is not ordered: II is stricter after strong periods (its rung re-anchors up), I after tolerated weak ones (its schedule never re-anchors down) --- model both before electing.
+\src{\GCCIA{} \S1.1 (``Cohort Threshold Breach'': ``on any day''); \KCIA{} \S1.1 (same); both Sch.~A (``Tested Cohort'' exit proviso).}
+\end{definition}
+
+\begin{definition}[Tested population; breach]\label{def:breach}
+Tested cohorts are the open cohorts plus the \emph{legacy} cohorts: the 12 (downstream) or 6 (upstream) monthly customer groups preceding the closing, computed as if the agreement had been in effect. Breach consequences, any mechanic: the breaching cohort's sharing percentage rises to $100\%$ immediately and irreversibly, and threshold compliance fails as a funding condition precedent.
+\src{\KCIA{} Sch.~A (``Legacy Reference Cohort'', ``Investor Sharing Percentage''), \S3.2(d)(vi); \GCCIA{} Sch.~A (``Legacy Reference Cohort''), \S3.2.}
+\end{definition}
+
+\begin{policy}[Subordination at the IR]\label{pol:subordination}
+Before countersigning any upstream IR: verify that the proposed $T(\tau)$, under its elected mechanic and at equivalent ages, is no tighter than every active downstream test. Skalar must never owe GC a pass that its portfolio cannot demonstrably produce from current data.
+\end{policy}
+
+% ============================================================
+\section{Protective Mechanics}\label{sec:protect}
+% ============================================================
+
+\begin{definition}[Wind-down pass-up]\label{def:winddown}
+Upstream: on an Underlying Investment Material Adverse Change at a company whose customers contribute more than $5\%$ of a vintage's trailing-3-month $\RIup$, Skalar pays GC
+\[
+\mathrm{payment}(\tau) = w(\tau) \times \Bigl( \Kgc(\tau, m) - {\textstyle\sum} \rem \Bigr),
+\qquad
+w(\tau) = \frac{\RIup_{\text{affected company, 3M}}}{\RIup_{\text{total, 3M}}},
+\]
+tested and due at each upstream DDR. Downstream mirror: company-initiated cancellations above the deal's wind-down threshold (instances: $5\%$ or $2.5\%$ of trailing-3-month income) trigger the analogous payment to Skalar; carve-outs are per instance (e.g., enforcement of published safety, content, and acceptable-use policies; an app-store removal variant exists where the product is app-distributed). The upstream and downstream triggers do not coincide (recipient MAC vs.\ company-initiated cancellation): the gap is a contingent liability, reserved per company.
+\src{\GCCIA{} \S2.2(f), Sch.~A (``Underlying Investment Wind-Down Payment''); template: \KCIA{} Sch.~A \S2.3; \FudoTS{} ``Product Line Wind-Downs''.}
+\end{definition}
+
+\begin{definition}[Acceleration; termination; graduation]\label{def:accel}
+Upstream acceleration: on fraud or a Cancellation Event (which upstream includes \emph{company-level} events at any active portfolio company --- insolvency, representation breach causing a MAC, regulatory event --- curable via the wind-down provision), GC may demand the full outstanding cap of all vintages within \textbf{3 business days}. Downstream demand right: \textbf{5 business days} --- inverted; hold a liquidity buffer for the 2-day gap and target $\leq 3$ days in new deal templates. Graduation: a company exceeding \$2.5M single-period spend \emph{and} \$20M aggregate outstanding may be taken direct by GC (up to $49\%$ of direct-cohort origination conveyed back to Skalar). Early termination: if GC contracts with a Skalar competitor whose recipient operates in Central or South America, Skalar may exit by prepaying all open vintages' outstanding caps. Downstream mirror of the prepayment right: on a Sale of the company, the company may --- on $5$ business days' notice --- cancel the commitment and prepay its open cohorts up to their outstanding caps (a good-faith estimate of amounts that would otherwise have come due). Default rates: upstream $16\%$, downstream $18\%$ (360/30) --- a $+2\%$ spread on late amounts. The downstream capital-disruption clause (notice, 60-day cure, penalty-free commitment release) exists only downstream; it is Skalar's sole relief valve against GC's discretionary funding and must appear in every deal template.
+\src{\GCCIA{} \S1.1 (``Cancellation Event''), \S2.2(d), Sch.~A \S2.1--2.2; \KCIA{} \S2.2(c), Sch.~A \S2.4.}
+\end{definition}
+
+% ============================================================
+\section{Upstream--Downstream Coupling}\label{sec:coupling}
+% ============================================================
+
+The two layers are one instrument executed back to back. Downstream, Skalar is the \emph{committed funder} and is owed cohort income; upstream, Skalar is the \emph{uncommitted borrower} and owes vintage income, having guaranteed portfolio collections on an accrual basis. The same customer dollar is priced twice under non-identical terms; the differences below are structural, and managing the gaps between them is the platform's purpose.
+
+\begin{center}
+\begin{tabular}{@{} L{2.8cm} L{5.2cm} L{5.2cm} @{}}
+\toprule
+\textbf{Dimension} & \textbf{Upstream (owed to GC)} & \textbf{Downstream (owed to Skalar)} \\
+\midrule
+Commitment & Discretionary --- each \textsc{pfa} is an offer GC may decline. & Mandatory within caps and conditions; relief only via the capital-disruption clause. \\[3pt]
+Income basis & Accrual, greater-of (due vs.\ collected). & Cash collections. \\[3pt]
+Settlement & One monthly net wire, $\approx$ day $17$. & Per deal; template $14+3$, current instances $\approx$ day $60$. \\[3pt]
+Cap shape & $\min(\text{hard multiple},\ \text{IRR amount})$, \emph{accruing in time}. & MOIC ladder, \emph{frozen at payback}. \\[3pt]
+Breach & Sharing $\to 1.00$; test set \emph{per IR}. & Sharing $\to 1.00$; test fixed \emph{at signature}. \\[3pt]
+Acceleration & Demand within $3$ business days. & Demand within $5$ business days. \\[3pt]
+Wind-down trigger & Recipient material adverse change. & Company-initiated cancellation. \\[3pt]
+Default rate & Lower leg. & Higher leg ($+$ spread). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Consequences}
+
+\emph{Self-support.} The upstream funding leg is a request, not a source: the plan is solvent at $\PFA = 0$ in every month (Policy~\ref{pol:solvency}), and the downstream capital-disruption clause is Skalar's only relief when GC declines --- it must appear in every template (Definition~\ref{def:accel}).
+
+\emph{Timing.} Downstream cash lands late while the upstream remittance is due early; netting the prior period's sharing against the next funding at the Investment Request (Policy~\ref{pol:netir}) converts a late receivable into a reduced day-zero outflow that pre-funds the upstream wire independently of collection.
+
+\emph{Velocity.} The downstream cap freezes at payback while the upstream cap accrues in time, so Skalar's per-vintage net is their spread (Definition~\ref{def:econ}): positive for fast cohorts, vanishing as payback ages lengthen. Capital allocation favours fast-payback cohorts.
+
+\emph{Subordination.} No upstream test may be tighter, at equal ages, than every active downstream test (Policy~\ref{pol:subordination}): Skalar must never owe GC a pass its portfolio cannot demonstrably produce.
+
+\emph{Gaps.} Upstream demand ($3$ business days) outruns downstream extraction ($5$): hold a liquid buffer for the difference and target $\leq 3$ days in new templates (Definition~\ref{def:accel}). And the upstream wind-down trigger (recipient adverse change) does not coincide with the downstream trigger (company cancellation); the non-overlap is a contingent liability, reserved per company (Definition~\ref{def:winddown}).
+
+\begin{policy}[Greater-of containment]\label{pol:containment}
+Upstream obligations accrue on amounts \emph{due} downstream (Definition~\ref{def:riup}) while downstream income is \emph{cash collected}. The wedge --- late or short downstream collection --- is Skalar's to absorb. Contain it structurally: identical Customer-Dataset definitions upstream and down, so the two ``amount due'' measures coincide; a Collections Account with an early control agreement on every downstream deal; and a downstream default rate no lower than the upstream rate plus the spread, pursued from the first day of slippage.
+\end{policy}
+
+% ============================================================
+\section{Invariants}\label{sec:invariants}
+% ============================================================
+
+\begin{invariant}[Proportion]\label{inv:prop}
+Post-adjustment, $\PFA(\tau) / \spend_{sk}(\tau) = \varphi(\tau) = 0.95$ for every vintage; deviations exist only under a documented GC election, recorded in the vintage register with the Funding Adjustment reference.
+\end{invariant}
+
+\begin{invariant}[Fungibility]\label{inv:fung}
+$\pool(t)$ is a single scalar. No formula, claim, or report conditions on the origin of Skalar-side dollars. Vintage identity attaches only to GC-funded amounts.
+\end{invariant}
+
+\begin{invariant}[Accrual]\label{inv:accrual}
+Remittances are computed on entitlements due (greater-of), never reduced by downstream non-collection.
+\end{invariant}
+
+\begin{invariant}[Cap]\label{inv:cap}
+Both legs of $\Kgc$ are evaluated at every calculation date; the binding leg is recorded; $\sum_m \rem(\tau, m) \leq \Kgc$ always; nothing is remitted after closure or 10 years.
+\end{invariant}
+
+\begin{invariant}[Thresholds]\label{inv:thresh}
+Every deal and every upstream IR carries an explicit election $\{\param{mechanic}, \param{timing}, \param{exit}\}$; absent one, apply $\{$I, \textsc{any-day}, \textsc{breakeven}$\}$. The basis is always Reference Income over origin actual spend. Subordination (Policy~\ref{pol:subordination}) is checked at every IR countersign.
+\end{invariant}
+
+\begin{invariant}[Solvency]\label{inv:solv}
+The liquidity plan is solvent at $\PFA = 0$ in every month.
+\end{invariant}
+
+\begin{invariant}[Attribution]\label{inv:attr}
+Every customer maps to exactly one vintage (join month) and one deal cohort (first-transaction period), computed over unfiltered data.
+\end{invariant}
+
+\begin{invariant}[Netting]\label{inv:net}
+Ledgers record components; a wire is the signed sum of the components that fall on its date (Definition~\ref{def:netprinciple}); no component is extinguished by the netting of a wire. The closed-form nets are the ideal matched case, not the operational reality.
+\end{invariant}
+
+\begin{invariant}[Adjustment diligence]\label{inv:adjust}
+Every adjustment event is raised the moment actual spend is determinable, settled standalone without awaiting the settlement calendar, and its GC share propagated to the vintage's capital position at once. No adjustment is deferred to a settlement date, and none settles twice.
+\end{invariant}
+
+\subsection{Registers}
+
+\begin{itemize}
+    \item \textbf{Vintage register:} $\tau$, $\PFA$, funding date, resolved parameters, dated remittances, $\Xirr$, $2\times$ ceiling, binding leg, threshold election and status, projected closure.
+    \item \textbf{Company register:} trailing-3-month $\RIup$ share per vintage, threshold trajectories against downstream and upstream tests, distance to graduation triggers (\$2.5M / \$20M), MAC indicators, wind-down contingency.
+    \item \textbf{Liquidity register:} month, pool balance, committed downstream funding, remittances due (accrual), netting offsets available, $\PFA$ requested vs.\ granted.
+\end{itemize}
+
+% ============================================================
+\appendix
+\section{Glossary: Standard Agreement Terminology}\label{sec:xval}
+% ============================================================
+
+This document's vocabulary mapped to the standard defined terms used in the underlying agreements, so the reference can be read and applied without consulting them.
+
+\begin{longtable}{@{} L{4.2cm} L{3.2cm} L{6.8cm} @{}}
+\toprule
+\textbf{This document} & \textbf{Symbol} & \textbf{Standard agreement term} \\
+\midrule
+\endhead
+Vintage & $V(\tau)$ & Reference Cohort (upstream) \\[3pt]
+Deal cohort & $C(d,i)$ & Reference Cohort (downstream) \\[3pt]
+Join Date & --- & Join Date / first transaction date \\[3pt]
+S\&M Period & $P(d,n)$, month & S\&M Period \\[3pt]
+Downstream funding & $F(d,n)$ & Investment Amount \\[3pt]
+Funding election band & $f(d,n)$, $[f_{\min}, f_{\max}]$ & Funding Amount, as elected by the company \\[3pt]
+Upstream funding & $\PFA(\tau)$ & Periodic Funding Amount \\[3pt]
+Funding percentage & $\varphi(\tau)$ & Investor Funding Percentage \\[3pt]
+Sharing percentage & $\sigma(\tau)$, $s(d,i)$ & Investor Sharing Percentage \\[3pt]
+Collections & $\col$ & Collections \\[3pt]
+Margin & $g(d,i)$ & Margin / gross margin (per cohort) \\[3pt]
+Downstream income & $R(d,k,i)$ & Reference Income (downstream) \\[3pt]
+Currency mechanics & $e_0$, $\kappa$ & Cohort Inception Rate / Cohort Rate Cap \\[3pt]
+Upstream entitlement & $\RIup(\tau,m)$ & Reference Income (upstream; earned-and-due, greater-of) \\[3pt]
+Downstream cap & $\capdn(d,i)$, $\mu$ & Return Multiple (Cap) / Investor Cap Amount \\[3pt]
+Upstream cap & $\Kgc(\tau,m)$ & Investor Cap Amount (lesser of hard multiple and IRR amount) \\[3pt]
+XIRR semantics & $\Xirr$ & Internal Rate of Return (spreadsheet XIRR on dated flows) \\[3pt]
+Remaining obligation & $\Kgc - \sum \rem$ & Outstanding Investor Share \\[3pt]
+Adjustment & $A(d,n)$ & S\&M Excess Spend / Underspend; Spend Reconciliation; Funding Adjustment \\[3pt]
+Settlement report & DDR & Disbursement Date Report \\[3pt]
+Disbursement date & $D(d,n)$ & (Scheduled) Disbursement Date \\[3pt]
+Operation cadence & $L_{op}$ & S\&M Period length (monthly, quarterly, \dots) \\[3pt]
+Calc / settle windows & $L_c$, $L_s$ & DDR lag / Disbursement Date lag \\[3pt]
+Income-due lag; netting offset & $\lambda$, $\delta$ & derived: $\delta = \lambda + 1$ \\[3pt]
+Net wire & eq.~(\ref{eq:netup}) & Net Payments \\[3pt]
+Netting at the IR & Policy~\ref{pol:netir} & reduction of the next Investment Request by sharing owed \\[3pt]
+Threshold test & $T(\cdot)$ & Cohort Threshold Test \\[3pt]
+Checkpoints & $(a_l, p_l)$ & Threshold M$x$ levels (cumulative) \\[3pt]
+Delta leg & $p_\Delta$ & Threshold Delta M$x$+ (continuation slope of the schedule; incremental per-period under Mechanic II) \\[3pt]
+Breach timing & \textsc{any-day} & Cohort Threshold Breach (``on any day'') \\[3pt]
+Testing exit & \textsc{breakeven} & Tested Cohort cessation (cumulative Reference Income exceeds origin spend) \\[3pt]
+Legacy cohorts & --- & Legacy / Historical Reference Cohorts \\[3pt]
+Breach consequence & $\sigma \to 1.00$ & Investor Sharing Percentage proviso; funding condition precedent \\[3pt]
+Wind-down (upstream) & Def.~\ref{def:winddown} & Underlying Investment Wind-Down Payment \\[3pt]
+Wind-down (downstream) & Def.~\ref{def:winddown} & Product Line / Application Wind-Down \\[3pt]
+Acceleration & 3 / 5 business days & demand of the Outstanding Investor Share \\[3pt]
+Graduation & \$2.5M / \$20M triggers & Graduated recipient; direct agreement with conveyance-back \\[3pt]
+Capital disruption & --- & Capital Disruption Event (downstream protection only) \\[3pt]
+Default rates & $16\%$ up / $18\%$ down & Default Rate (360/30 basis) \\[3pt]
+10-year stop & \textsc{expired} & cap and sharing extinguished 10 years after the origin period \\
+\bottomrule
+\end{longtable}
+
+\textbf{Operational note.} The upstream facility text is internally inconsistent on the business-day convention (one clause says preceding, another succeeding). The platform operates on \emph{preceding} for all Skalar payables until the inconsistency is resolved in writing.
+
+% ============================================================
+\section{Onboarding and Extension}\label{sec:onboard}
+% ============================================================
+
+A new deal is onboarded by resolving its parameter set --- one value per dimension of Section~\ref{sec:params} --- and recording it in the scenarios sandbox; nothing in this specification changes. When a negotiation introduces a dimension the body lacks, the body acquires a new symbolic definition and every deal thereafter records its value for that dimension (possibly ``none''). Concrete, dated cases --- resolved parameter sets and worked cash-event walkthroughs --- live in the sandbox, not in this specification.
+
+% ============================================================
+\section{FX Mechanics (Negotiated Strategy)}\label{sec:fx}
+% ============================================================
+
+The default across all deals is that collections, funding, and remittances are denominated in USD and no currency mechanics apply. For a deal operating in a local currency, the following strategy is negotiated per deal and resolved per cohort.
+
+\begin{definition}[Currency conversion]\label{def:fx}
+Each cohort resolves at its investment request: an \emph{inception rate} $e_0(d, i)$ (prevailing market rate, local per USD, at the request) and a \emph{rate cap} $\kappa(d) \times e_0(d, i)$ with cap multiplier $\kappa(d)$ (e.g., $1.20$, allowing at most $20\%$ local depreciation). Local-currency Reference Income converts to USD at
+\[
+R_{\mathrm{USD}} = \frac{R_{\mathrm{local}}}{\min\bigl(e(t),\ \kappa(d)\, e_0(d,i)\bigr)},
+\]
+where $e(t)$ is the spot rate at calculation.
+\end{definition}
+
+Consequences: depreciation within the cap passes through, slowing repayment in USD terms; appreciation accelerates repayment proportionally; depreciation beyond the cap is borne by the company, which remits the additional local currency needed to meet the USD obligation computed at the rate cap. In all cases the sharing rate applies to Reference Income unchanged --- only the conversion is governed here. The platform stores $e_0$ per cohort, $\kappa$ per deal, and the binding rate (spot or cap) per calculation.
+
+\end{document}

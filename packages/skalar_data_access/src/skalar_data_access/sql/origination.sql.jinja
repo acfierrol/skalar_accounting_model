@@ -1,0 +1,13 @@
+{#-
+  Per-cohort funding/sharing election + settlement lag for one deal cohort.
+  origination_spend_percent = funding %; origination_collection_percent = sharing %
+  (both integer percents); delay_months = income-due lag in periods.
+  Values bound: @company_id, @cohort_month.
+-#}
+SELECT
+    origination_spend_percent,
+    origination_collection_percent,
+    delay_months
+FROM `{{ project }}.{{ dataset }}.origination_collection_percent`
+WHERE company_id = @company_id
+  AND cohort_month = @cohort_month

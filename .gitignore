@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Local scratch + data caches (parquet collection extracts)
+.scratch/
+.cache/
+*.parquet
+
+# Claude Code local (per-developer) settings; shared settings.json may be committed
+.claude/settings.local.json

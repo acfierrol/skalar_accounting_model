@@ -1,0 +1,34 @@
+{#-
+  Cohort-assignment integrity for one deal (KB §2).
+
+  Computes each customer's first-payment month over the *complete, unfiltered*
+  per-customer history, then compares it to the materialised `cohort_month` column
+  and counts pre-closing ("first_period < 0", i.e. first_period_month < @closing_month)
+  customers that must be excluded from funded cohorts.
+
+  Returns one summary row. Values bound: @company_id, @closing_month.
+-#}
+WITH firsts AS (
+    SELECT customer_id, DATE_TRUNC(MIN(payment_date), MONTH) AS first_period_month
+    FROM `{{ project }}.{{ dataset }}.payments`
+    WHERE company_id = @company_id
+    GROUP BY customer_id
+),
+joined AS (
+    SELECT
+        p.customer_id,
+        p.cohort_month,
+        f.first_period_month,
+        DATE_DIFF(f.first_period_month, @closing_month, MONTH) AS first_period_index
+    FROM `{{ project }}.{{ dataset }}.payments` AS p
+    JOIN firsts AS f USING (customer_id)
+    WHERE p.company_id = @company_id
+)
+SELECT
+    COUNT(*) AS payment_rows,
+    COUNT(DISTINCT customer_id) AS customers,
+    COUNTIF(cohort_month != first_period_month) AS cohort_mismatch_rows,
+    COUNT(DISTINCT IF(first_period_index < 0, customer_id, NULL)) AS backdated_customers,
+    MIN(first_period_month) AS earliest_first_period,
+    MAX(first_period_month) AS latest_first_period
+FROM joined

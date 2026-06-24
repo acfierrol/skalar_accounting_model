@@ -1,0 +1,135 @@
+[project]
+name = "skalar-accounting-model"
+version = "0.1.0"
+description = "Skalar capital-mechanics engine + cash-basis accounting model (monorepo root)."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "skalar-data-access",
+    "skalar-capital-mechanics",
+    "skalar-accounting",
+    "skalar-data-docs",
+    "skalar-cli",
+]
+
+# Virtual workspace root: aggregates members + tooling, never built/installed itself.
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*", "apps/*"]
+
+[tool.uv.sources]
+skalar-data-access = { workspace = true }
+skalar-capital-mechanics = { workspace = true }
+skalar-accounting = { workspace = true }
+skalar-data-docs = { workspace = true }
+skalar-cli = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "import-linter>=2.0",
+    "pre-commit>=3.8",
+]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = [
+    "packages/skalar_data_access/src",
+    "packages/skalar_capital_mechanics/src",
+    "packages/skalar_accounting/src",
+    "packages/skalar_data_docs/src",
+    "apps/cli/src",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "PTH", "RUF"]
+# Money/percent ratios and contract constants are not magic numbers; tests carry oracle values.
+# TCH/flake8-type-checking is intentionally omitted: it conflicts with Pydantic field types
+# (e.g. Path, Decimal) that must remain importable at runtime.
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+explicit_package_bases = true
+namespace_packages = true
+mypy_path = [
+    "packages/skalar_data_access/src",
+    "packages/skalar_capital_mechanics/src",
+    "packages/skalar_accounting/src",
+    "packages/skalar_data_docs/src",
+    "apps/cli/src",
+]
+files = ["packages", "apps"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# Third-party libraries with absent or partial type information: treat as opaque
+# (follow_imports=skip => their members are Any, so untyped external calls are allowed).
+[[tool.mypy.overrides]]
+module = [
+    "google",
+    "google.*",
+    "sqlparse",
+    "sqlparse.*",
+    "pyarrow",
+    "pyarrow.*",
+]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[tool.pytest.ini_options]
+addopts = "-m 'not bq' --strict-markers"
+testpaths = ["packages", "apps"]
+markers = [
+    "bq: live BigQuery test, requires ADC (deselect with -m 'not bq')",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["skalar_data_access", "skalar_capital_mechanics", "skalar_accounting", "skalar_data_docs", "skalar_cli"]
+
+# ---------------------------------------------------------------------------
+# Import-linter — enforce the one-way dependency rule (data_access -> ... -> cli)
+# ---------------------------------------------------------------------------
+
+[tool.importlinter]
+root_packages = [
+    "skalar_data_access",
+    "skalar_capital_mechanics",
+    "skalar_accounting",
+    "skalar_data_docs",
+    "skalar_cli",
+]
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture: data_access -> capital_mechanics -> accounting -> cli"
+type = "layers"
+layers = [
+    "skalar_cli",
+    "skalar_accounting",
+    "skalar_capital_mechanics",
+    "skalar_data_access",
+]
+
+[[tool.importlinter.contracts]]
+name = "data_docs is a leaf tool (only data_access may be a dependency of it)"
+type = "forbidden"
+source_modules = [
+    "skalar_capital_mechanics",
+    "skalar_accounting",
+]
+forbidden_modules = ["skalar_data_docs"]
