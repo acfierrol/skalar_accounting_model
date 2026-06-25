@@ -10,6 +10,7 @@ dependencies = [
     "skalar-accounting",
     "skalar-data-docs",
     "skalar-cli",
+    "skalar-viz",
 ]
 
 # Virtual workspace root: aggregates members + tooling, never built/installed itself.
@@ -25,6 +26,7 @@ skalar-capital-mechanics = { workspace = true }
 skalar-accounting = { workspace = true }
 skalar-data-docs = { workspace = true }
 skalar-cli = { workspace = true }
+skalar-viz = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -44,11 +46,14 @@ dev = [
 [tool.ruff]
 target-version = "py313"
 line-length = 100
+# Notebooks are presentation artifacts (intentional unicode in titles, exploratory imports).
+extend-exclude = ["notebooks"]
 src = [
     "packages/skalar_data_access/src",
     "packages/skalar_capital_mechanics/src",
     "packages/skalar_accounting/src",
     "packages/skalar_data_docs/src",
+    "packages/skalar_viz/src",
     "apps/cli/src",
 ]
 
@@ -69,6 +74,7 @@ mypy_path = [
     "packages/skalar_capital_mechanics/src",
     "packages/skalar_accounting/src",
     "packages/skalar_data_docs/src",
+    "packages/skalar_viz/src",
     "apps/cli/src",
 ]
 files = ["packages", "apps"]
@@ -90,6 +96,8 @@ module = [
     "pyarrow.*",
     "openpyxl",
     "openpyxl.*",
+    "matplotlib",
+    "matplotlib.*",
 ]
 ignore_missing_imports = true
 follow_imports = "skip"
@@ -103,7 +111,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["skalar_data_access", "skalar_capital_mechanics", "skalar_accounting", "skalar_data_docs", "skalar_cli"]
+source = ["skalar_data_access", "skalar_capital_mechanics", "skalar_accounting", "skalar_data_docs", "skalar_cli", "skalar_viz"]
 
 # ---------------------------------------------------------------------------
 # Import-linter — enforce the one-way dependency rule (data_access -> ... -> cli)
@@ -116,6 +124,7 @@ root_packages = [
     "skalar_accounting",
     "skalar_data_docs",
     "skalar_cli",
+    "skalar_viz",
 ]
 
 [[tool.importlinter.contracts]]
@@ -136,3 +145,13 @@ source_modules = [
     "skalar_accounting",
 ]
 forbidden_modules = ["skalar_data_docs"]
+
+[[tool.importlinter.contracts]]
+name = "viz is a presentation leaf (the engine/accounting never import it)"
+type = "forbidden"
+source_modules = [
+    "skalar_data_access",
+    "skalar_capital_mechanics",
+    "skalar_accounting",
+]
+forbidden_modules = ["skalar_viz"]

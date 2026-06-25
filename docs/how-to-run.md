@@ -46,6 +46,30 @@ breaches, the netting "to-do" wire count, and the reconciliation `|Check|` (≈ 
 > adjustments — so a cohort beyond the recorded GC split needs those inputs. Until then, supply
 > `--cache`.
 
+## Visualize the collections → sharing waterfall
+
+The `skalar_viz` package decomposes collections into the Skalar/GC sharing waterfall and lays the
+per-cohort flows on a cohort × calendar-period run-off triangle (matplotlib). The parametrized
+notebook `notebooks/collections_waterfall.ipynb` drives it from a single Parameters cell:
+
+```bash
+make notebook        # execute it in place (embeds the figures)
+# or open it interactively:
+uv run --with jupyterlab jupyter lab notebooks/collections_waterfall.ipynb
+```
+
+In code:
+
+```python
+from skalar_viz import (
+    decompose_portfolio, build_waterfall_steps, plot_waterfall,
+    build_cohort_period_matrix, plot_cohort_matrix,
+)
+cells = decompose_portfolio(collections, params, fundings)   # collections -> R -> S -> S~ -> GC/Skalar
+plot_waterfall(build_waterfall_steps(cells))                 # where each dollar goes
+plot_cohort_matrix(build_cohort_period_matrix(cells, "skalar_retained"))  # the run-off triangle
+```
+
 ## Profile the BigQuery tables (read-only)
 
 ```bash
