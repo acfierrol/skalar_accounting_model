@@ -142,5 +142,6 @@ def write_workbook(
     _write_structure_sheet(wb.create_sheet(title="Structure"), ledger, netting)
 
     out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)  # the documented run writes to build/…
     wb.save(out)
     return out

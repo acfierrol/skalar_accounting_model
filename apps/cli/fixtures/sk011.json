@@ -1,0 +1,66 @@
+{
+  "company_id": "SK011",
+  "scanned_bytes": 0,
+  "compliance_violations": 0,
+  "threshold_breaches": 0,
+  "debt_given": {
+    "rate": "0.25",
+    "day_count": "month_days_365",
+    "loans": [
+      {
+        "name": "June 2026 Loan",
+        "flows": [
+          {"date": "2026-06-08", "inflow": "0", "outflow": "-160000"},
+          {"date": "2026-06-28", "inflow": "0", "outflow": "-12000"},
+          {"date": "2026-07-28", "inflow": "84000", "outflow": "6000"},
+          {"date": "2026-08-28", "inflow": "45000", "outflow": "0"},
+          {"date": "2026-09-28", "inflow": "30000", "outflow": "0"},
+          {"date": "2026-10-28", "inflow": "22500", "outflow": "0"},
+          {"date": "2026-11-28", "inflow": "0", "outflow": "0"}
+        ]
+      },
+      {
+        "name": "July 2026 Loan",
+        "flows": [
+          {"date": "2026-06-08", "inflow": "0", "outflow": "0"},
+          {"date": "2026-06-28", "inflow": "0", "outflow": "-200000"},
+          {"date": "2026-07-28", "inflow": "0", "outflow": "0"},
+          {"date": "2026-08-28", "inflow": "0", "outflow": "0"},
+          {"date": "2026-09-28", "inflow": "0", "outflow": "0"},
+          {"date": "2026-10-28", "inflow": "0", "outflow": "0"},
+          {"date": "2026-11-28", "inflow": "0", "outflow": "0"}
+        ]
+      }
+    ]
+  },
+  "debt_taken": {
+    "rate": "0.16",
+    "day_count": "actual_365",
+    "loans": [
+      {
+        "name": "June 2026 Loan",
+        "flows": [
+          {"date": "2026-06-05", "inflow": "152000", "outflow": "0"},
+          {"date": "2026-06-28", "inflow": "-11400", "outflow": "0"},
+          {"date": "2026-07-28", "inflow": "5700", "outflow": "-79800"},
+          {"date": "2026-08-28", "inflow": "0", "outflow": "-42750"},
+          {"date": "2026-09-28", "inflow": "0", "outflow": "-28500"},
+          {"date": "2026-10-28", "inflow": "0", "outflow": "-21375"},
+          {"date": "2026-11-28", "inflow": "0", "outflow": "0"}
+        ]
+      },
+      {
+        "name": "July 2026 Loan",
+        "flows": [
+          {"date": "2026-06-05", "inflow": "0", "outflow": "0"},
+          {"date": "2026-06-28", "inflow": "190000", "outflow": "0"},
+          {"date": "2026-07-28", "inflow": "0", "outflow": "0"},
+          {"date": "2026-08-28", "inflow": "0", "outflow": "0"},
+          {"date": "2026-09-28", "inflow": "0", "outflow": "0"},
+          {"date": "2026-10-28", "inflow": "0", "outflow": "0"},
+          {"date": "2026-11-28", "inflow": "0", "outflow": "0"}
+        ]
+      }
+    ]
+  }
+}

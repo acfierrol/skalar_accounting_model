@@ -16,6 +16,9 @@ wheels/
 htmlcov/
 .coverage
 
+# Built docs site (mkdocs)
+site/
+
 # Local scratch + data caches (parquet collection extracts)
 .scratch/
 .cache/

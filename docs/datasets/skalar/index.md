@@ -32,3 +32,6 @@ start and are profiled here.
 case: funding 80% / sharing 80% / `delay_months` 2, cohort 2026-06, F = $160,000
 (PFA = $152,000 GC + $8,000 Skalar). This is the worked vintage in
 `docs/capital_mechanics_documentation/scenarios_sandbox.md` (×1000 vs its kUSD figures).
+The full pipeline reproduces `docs/Accounting Model.xlsx` for this deal — see
+[How to run](../../how-to-run.md) and the golden reconciliation
+(`packages/skalar_accounting/tests/test_golden.py`).

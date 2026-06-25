@@ -1,0 +1,26 @@
+site_name: Skalar Capital Mechanics & Accounting Model
+site_description: Engine + cash-basis (EIR) accounting model for Skalar's capital structure.
+docs_dir: docs
+use_directory_urls: false
+
+theme:
+  name: mkdocs
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - How to run: how-to-run.md
+  - Parameter reference: parameters.md
+  - Methodology:
+      - Cash model KB: capital_mechanics_documentation/skalar_cash_model_kb.md
+      - Scenarios & sandbox: capital_mechanics_documentation/scenarios_sandbox.md
+  - Data:
+      - Read-only access: access.md
+      - Datasets overview: datasets/skalar/index.md
+      - company: datasets/skalar/tables/company.md
+      - payments: datasets/skalar/tables/payments.md
+      - spend: datasets/skalar/tables/spend.md
+      - origination_collection_percent: datasets/skalar/tables/origination_collection_percent.md
+      - investment_ledger: datasets/skalar/tables/investment_ledger.md
+      - payment_ledger: datasets/skalar/tables/payment_ledger.md
+      - monthly_payments: datasets/skalar/tables/monthly_payments.md

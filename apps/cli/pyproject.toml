@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 skalar-profile = "skalar_cli.profile_cmd:app"
+skalar-accounting = "skalar_cli.run_cmd:app"
 
 [build-system]
 requires = ["hatchling"]
