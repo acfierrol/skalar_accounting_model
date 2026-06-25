@@ -76,6 +76,14 @@ from .models import (
     WindDownSpec,
 )
 from .resolve import load_company, resolve_deal_parameters
+from .spend import (
+    CohortFunding,
+    SpendCell,
+    SpendTable,
+    build_spend,
+    resolve_funding,
+    resolve_funding_series,
+)
 
 __version__ = "0.1.0"
 
@@ -84,6 +92,7 @@ __all__ = [
     "CapitalMechanicsError",
     "CashEvent",
     "CashEventKind",
+    "CohortFunding",
     "CohortIndex",
     "CollectionsCell",
     "CollectionsMatrix",
@@ -116,6 +125,8 @@ __all__ = [
     "SharingBand",
     "SharingCell",
     "SharingSchedule",
+    "SpendCell",
+    "SpendTable",
     "ThresholdBasis",
     "ThresholdCheck",
     "ThresholdExit",
@@ -130,6 +141,7 @@ __all__ = [
     "build_collections",
     "build_downstream_cash_events",
     "build_netting",
+    "build_spend",
     "build_transacted_ledger",
     "check_compliance",
     "cohort_index",
@@ -141,6 +153,8 @@ __all__ = [
     "payback_age",
     "reference_income",
     "resolve_deal_parameters",
+    "resolve_funding",
+    "resolve_funding_series",
     "return_cap",
     "sharing_events_from_schedule",
     "sharing_schedule",

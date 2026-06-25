@@ -36,9 +36,15 @@ SK011 fixture reproduces `docs/Accounting Model.xlsx`). The run report shows Big
 bytes, Revenue, Cost of Capital, outstanding lended/borrowed, compliance violations, threshold
 breaches, the netting "to-do" wire count, and the reconciliation `|Check|` (≈ 0).
 
-> **Live BigQuery runs** (building cash events from scratch) are not yet wired end-to-end: the
-> hand-set per-deal spend / funding-adjustment / GC-transaction-date inputs are not all carried
-> in BigQuery. Until that is wired, supply `--cache`.
+> **Live BigQuery runs** (building cash events from scratch) are not yet wired end-to-end, but
+> the funding leg is now sourced from BigQuery: `skalar_capital_mechanics.build_spend` reads the
+> consolidated `skalar-data.Skalar.spend` table and `resolve_funding` sizes each cohort's
+> `F = funding_pct × estimated_spend` (= `estimated_gc_spend + estimated_skalar_spend`), the GC
+> PFA, and the threshold-test basis (`actual_spend`, expected as fallback). What remains for a
+> full live run: `origination_collection_percent` carries only the June election (per-cohort
+> rates beyond it), the settlement-calendar dating of sharing cash events, and the funding
+> adjustments — so a cohort beyond the recorded GC split needs those inputs. Until then, supply
+> `--cache`.
 
 ## Profile the BigQuery tables (read-only)
 

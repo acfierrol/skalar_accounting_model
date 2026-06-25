@@ -1,0 +1,25 @@
+{#-
+  Per-cohort S&M spend for one deal from the consolidated `spend` table.
+
+  One row per (company_id, cohort_month): expected (`estimated_spend`, the IR figure) and
+  realized (`actual_spend`, the threshold-test denominator), plus the GC/Skalar leverage split
+  (populated only where tracked, e.g. SK011). NULLs are meaningful and preserved.
+
+  Values bound: @company_id, and (when date_range) @date_from/@date_to on cohort_month.
+-#}
+SELECT
+    company_id,
+    cohort_month,
+    estimated_spend,
+    actual_spend,
+    estimated_gc_spend,
+    estimated_skalar_spend,
+    actual_gc_spend,
+    actual_skalar_spend
+FROM `{{ project }}.{{ dataset }}.spend`
+WHERE company_id = @company_id
+{% if date_range -%}
+  AND cohort_month >= @date_from
+  AND cohort_month <= @date_to
+{% endif -%}
+ORDER BY cohort_month
